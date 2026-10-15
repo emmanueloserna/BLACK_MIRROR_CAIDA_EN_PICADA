@@ -1,0 +1,1103 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Caída en picada</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#040405; --panel:rgba(255,255,255,.045); --panel-2:rgba(255,255,255,.08);
+  --line:rgba(255,255,255,.10); --line-2:rgba(255,255,255,.22);
+  --text:#F3F4F6; --muted:#8B9099; --dim:#767B84;
+  --red:#FF2D3D; --blue:#3DA9FF; --star:#FFC24B; --pink:#F6B3C6;
+  --sans:'Space Grotesk',system-ui,sans-serif; --mono:'JetBrains Mono',ui-monospace,monospace;
+  --ease:cubic-bezier(.2,.8,.2,1);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#000;color:var(--text);font-family:var(--sans);overflow:hidden}
+body{display:grid;place-items:center}
+
+/* ---------- escenario 16:9 ---------- */
+#stage{position:fixed;width:1920px;height:1080px;left:50%;top:50%;transform-origin:center;background:var(--bg);overflow:hidden}
+#stage::after{/* scanlines */content:"";position:absolute;inset:0;pointer-events:none;z-index:50;
+  background:repeating-linear-gradient(0deg,rgba(255,255,255,.018) 0 1px,transparent 1px 3px);mix-blend-mode:overlay}
+.vignette{position:absolute;inset:0;pointer-events:none;z-index:49;background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.65))}
+
+/* barra de estado */
+.status{position:absolute;top:0;left:0;right:0;height:64px;padding:0 56px;display:flex;align-items:center;justify-content:space-between;
+  font-family:var(--mono);font-size:18px;color:var(--muted);z-index:40;letter-spacing:.06em}
+.status b{color:var(--text);font-weight:600}
+.status .right{display:flex;gap:22px;align-items:center}
+.status svg{height:18px;fill:var(--text)}
+.rec{display:inline-flex;align-items:center;gap:10px;color:var(--red)}
+.rec i{width:10px;height:10px;border-radius:50%;background:var(--red);animation:blink 1.6s infinite}
+@keyframes blink{50%{opacity:.15}}
+.homebar{position:absolute;bottom:22px;left:50%;width:260px;height:7px;margin-left:-130px;border-radius:9px;background:rgba(255,255,255,.55);z-index:40}
+.progress{position:absolute;bottom:0;left:0;height:3px;background:var(--red);z-index:41;transition:width .6s var(--ease);box-shadow:0 0 12px var(--red)}
+
+/* ---------- diapositivas ---------- */
+.slide{position:absolute;inset:0;padding:120px 120px 90px;display:none}
+.slide.active{display:block}
+.label{font-family:var(--mono);font-size:20px;letter-spacing:.22em;text-transform:uppercase;color:var(--muted)}
+.label.red{color:var(--red)} .label.blue{color:var(--blue)}
+h1,h2{font-weight:700;letter-spacing:-.035em;line-height:.92}
+h2{font-size:104px;margin-top:18px}
+.glass{background:var(--panel);border:1px solid var(--line);border-radius:28px;backdrop-filter:blur(18px)}
+
+/* texto editable / placeholder */
+[data-edit]{outline:none;min-width:2ch;border-radius:6px;transition:box-shadow .2s}
+[data-edit]:empty::before{content:attr(data-ph);color:var(--dim);font-style:normal}
+body.editing [data-edit]{box-shadow:0 0 0 1px rgba(61,169,255,.45);cursor:text}
+body.editing [data-edit]:focus{box-shadow:0 0 0 2px var(--blue);background:rgba(61,169,255,.06)}
+
+/* espacio de imagen */
+.slot{position:relative;overflow:hidden;border-radius:28px;background:
+  repeating-linear-gradient(135deg,rgba(255,255,255,.03) 0 14px,transparent 14px 28px),#0b0b0d;border:1px dashed var(--line-2)}
+.slot img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none}
+.slot.has img{display:block}
+.slot.has{border:1px solid var(--line)}
+.slot .ph{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
+  font-family:var(--mono);font-size:17px;letter-spacing:.12em;color:var(--dim);text-transform:uppercase;text-align:center;padding:20px}
+.slot .ph svg{width:54px;stroke:var(--dim);fill:none;stroke-width:1.5}
+.slot.has .ph{display:none}
+body.editing .slot{cursor:pointer}
+body.editing .slot::after{content:"Clic para cambiar imagen";position:absolute;left:16px;bottom:16px;padding:8px 14px;border-radius:99px;
+  background:var(--blue);color:#000;font:600 15px var(--mono)}
+.slot.drag{outline:3px solid var(--blue)}
+
+/* entradas escalonadas */
+.slide.active [data-a]{animation:rise .9s var(--ease) both;animation-delay:calc(var(--d,0) * 90ms + 250ms)}
+.slide.active [data-a="pop"]{animation-name:pop}
+.slide.active [data-a="left"]{animation-name:fromLeft}
+.slide.active [data-a="right"]{animation-name:fromRight}
+.slide.active [data-a="glitch"]{animation:glitchIn 1s steps(1) both;animation-delay:calc(var(--d,0) * 90ms + 200ms)}
+@keyframes rise{from{opacity:0;transform:translateY(40px);filter:blur(8px)}to{opacity:1;transform:none;filter:none}}
+@keyframes pop{from{opacity:0;transform:scale(.7)}60%{transform:scale(1.04)}to{opacity:1;transform:none}}
+@keyframes fromLeft{from{opacity:0;transform:translateX(-80px)}to{opacity:1;transform:none}}
+@keyframes fromRight{from{opacity:0;transform:translateX(80px)}to{opacity:1;transform:none}}
+@keyframes glitchIn{
+  0%{opacity:0}
+  10%{opacity:1;transform:translate(-14px,0);text-shadow:6px 0 var(--red),-6px 0 var(--blue);clip-path:inset(10% 0 55% 0)}
+  20%{transform:translate(10px,0);clip-path:inset(60% 0 5% 0)}
+  30%{transform:translate(-4px,0);clip-path:inset(30% 0 30% 0)}
+  40%{transform:none;clip-path:none;text-shadow:3px 0 var(--red),-3px 0 var(--blue)}
+  55%{text-shadow:none;opacity:.6}
+  60%,100%{opacity:1;transform:none;text-shadow:none;clip-path:none}
+}
+
+/* ---------- transiciones entre diapositivas ---------- */
+#stage.t-crt-out .slide.active{animation:crtOut .42s ease-in forwards}
+#stage.t-crt-in .slide.active{animation:crtIn .5s var(--ease) both}
+@keyframes crtOut{0%{transform:none;filter:none}55%{transform:scale(1,.006);filter:brightness(4)}100%{transform:scale(0,.006);filter:brightness(6)}}
+@keyframes crtIn{0%{transform:scale(0,.006);filter:brightness(6)}45%{transform:scale(1,.006);filter:brightness(4)}100%{transform:none;filter:none}}
+#stage.t-glitch-out .slide.active{animation:gOut .38s steps(1) forwards}
+#stage.t-glitch-in .slide.active{animation:gIn .45s steps(1) both}
+@keyframes gOut{
+  0%{transform:none}
+  15%{transform:translateX(-30px);filter:hue-rotate(90deg) saturate(3);clip-path:inset(0 0 50% 0)}
+  30%{transform:translateX(40px);clip-path:inset(40% 0 20% 0)}
+  50%{transform:translateX(-10px) skewX(8deg);filter:invert(1);clip-path:inset(70% 0 0 0)}
+  70%{transform:translateX(20px);clip-path:inset(10% 0 80% 0);filter:none}
+  100%{opacity:0;clip-path:inset(50% 0 50% 0)}
+}
+@keyframes gIn{
+  0%{opacity:0}
+  20%{opacity:1;transform:translateX(30px);clip-path:inset(30% 0 40% 0);filter:hue-rotate(-90deg) saturate(3)}
+  40%{transform:translateX(-20px);clip-path:inset(0 0 60% 0)}
+  60%{transform:translateX(8px);clip-path:inset(50% 0 0 0);filter:none}
+  80%{transform:none;clip-path:none}
+  100%{opacity:1;transform:none;clip-path:none}
+}
+/* grieta (solo al desbloquear la portada) */
+#crack{position:absolute;inset:0;z-index:45;pointer-events:none;opacity:0}
+#crack path{fill:none;stroke:#fff;stroke-width:2.2;stroke-dasharray:1400;stroke-dashoffset:1400;filter:drop-shadow(0 0 6px rgba(160,210,255,.9))}
+#stage.t-crack #crack{opacity:1}
+#stage.t-crack #crack path{animation:crackDraw .5s cubic-bezier(.7,0,.3,1) forwards}
+#stage.t-crack .slide.active{animation:shake .5s linear}
+@keyframes crackDraw{to{stroke-dashoffset:0}}
+@keyframes shake{20%{transform:translate(-8px,4px)}40%{transform:translate(6px,-6px)}60%{transform:translate(-4px,2px)}80%{transform:translate(2px,-2px)}}
+#flash{position:absolute;inset:0;background:#fff;z-index:46;opacity:0;pointer-events:none}
+#stage.t-flash #flash{animation:flash .35s ease-out}
+@keyframes flash{0%{opacity:.85}100%{opacity:0}}
+
+/* ---------- S1 bloqueo ---------- */
+.s1 .wall{position:absolute;inset:0;background:url(img/rating-phone.jpg) center/cover;filter:blur(60px) saturate(1.4) brightness(.35);transform:scale(1.2)}
+.s1 .wrap{position:relative;display:grid;grid-template-columns:1.25fr 1fr;gap:80px;height:100%;align-items:center}
+.s1 .logo{width:620px;mix-blend-mode:screen;display:block}
+.s1 .clock{font-size:250px;font-weight:300;letter-spacing:-.06em;line-height:.85;margin-top:46px;font-variant-numeric:tabular-nums}
+.s1 .date{font-family:var(--mono);font-size:24px;color:var(--muted);letter-spacing:.2em;text-transform:uppercase;margin-top:18px}
+.s1 .notifs{display:flex;flex-direction:column;gap:20px}
+.notif{display:grid;grid-template-columns:64px 1fr auto;gap:22px;align-items:center;padding:26px 30px}
+.notif .ic{width:64px;height:64px;border-radius:16px;background:#000;border:1px solid var(--line-2);display:grid;place-items:center;font:700 26px var(--sans);color:var(--red)}
+.notif .ic img{width:48px;mix-blend-mode:screen}
+.notif .app{font-family:var(--mono);font-size:16px;letter-spacing:.14em;color:var(--muted);text-transform:uppercase}
+.notif .t{font-size:34px;font-weight:500;margin-top:6px;line-height:1.15}
+.notif .time{font-family:var(--mono);font-size:16px;color:var(--dim);align-self:start}
+.unlock{position:absolute;bottom:96px;left:0;right:0;text-align:center;font-family:var(--mono);font-size:20px;letter-spacing:.3em;text-transform:uppercase;
+  background:linear-gradient(90deg,var(--dim) 0%,#fff 50%,var(--dim) 100%);background-size:300% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:shimmer 2.8s linear infinite}
+@keyframes shimmer{from{background-position:100% 0}to{background-position:-200% 0}}
+
+/* ---------- S2 agenda ---------- */
+.s2 .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:30px 32px;margin-top:90px}
+.todo{display:grid;grid-template-columns:auto 1fr auto;gap:30px;align-items:center;padding:52px 44px}
+.todo .n{font:600 22px var(--mono);color:var(--red)}
+.todo .t{font-size:44px;font-weight:500}
+.todo .chk{width:40px;height:40px;border-radius:50%;border:2px solid var(--line-2)}
+.s2 .head{display:flex;justify-content:space-between;align-items:flex-end}
+.pill{font:600 18px var(--mono);letter-spacing:.14em;padding:12px 22px;border-radius:99px;border:1px solid var(--line-2);color:var(--muted)}
+
+/* ---------- S3 chat ---------- */
+.s3 .wrap{display:grid;grid-template-columns:1fr 1.15fr;gap:70px;height:100%}
+.s3 .slot{height:100%}
+.chat{display:flex;flex-direction:column;height:100%;padding:0}
+.chat .top{display:flex;align-items:center;gap:22px;padding:28px 34px;border-bottom:1px solid var(--line)}
+.chat .av{width:66px;height:66px;border-radius:50%;background:#000;border:1px solid var(--line-2);display:grid;place-items:center;overflow:hidden}
+.chat .av img{width:56px;mix-blend-mode:screen}
+.chat .nm{font-size:30px;font-weight:700}
+.chat .on{font:16px var(--mono);color:#3BE07A;letter-spacing:.1em}
+.chat .body{flex:1;display:flex;flex-direction:column;gap:22px;padding:40px 34px;justify-content:flex-end}
+.bub{max-width:82%;padding:24px 30px;border-radius:30px;font-size:31px;line-height:1.3}
+.bub.in{background:var(--panel-2);border-bottom-left-radius:8px;align-self:flex-start}
+.bub.out{background:var(--blue);color:#001426;border-bottom-right-radius:8px;align-self:flex-end;font-weight:500}
+.bub.out [data-edit]:empty::before{color:rgba(0,20,38,.5)}
+.typing{align-self:flex-start;display:flex;gap:9px;padding:24px 28px;border-radius:30px;background:var(--panel-2)}
+.typing i{width:12px;height:12px;border-radius:50%;background:var(--muted);animation:dot 1.2s infinite}
+.typing i:nth-child(2){animation-delay:.15s}.typing i:nth-child(3){animation-delay:.3s}
+@keyframes dot{0%,60%,100%{transform:none;opacity:.4}30%{transform:translateY(-10px);opacity:1}}
+
+/* ---------- S4 ficha ---------- */
+.s4 .wrap{display:grid;grid-template-columns:.8fr 1.2fr;gap:90px;height:100%;align-items:center}
+.s4 .logo{width:100%;mix-blend-mode:screen;margin-top:40px}
+.settings{padding:10px 0}
+.row{display:grid;grid-template-columns:330px 1fr auto;align-items:center;padding:26px 40px;border-bottom:1px solid var(--line);gap:20px}
+.row:last-child{border:0}
+.row .k{font:500 19px var(--mono);letter-spacing:.14em;color:var(--muted);text-transform:uppercase}
+.row .v{font-size:34px;font-weight:500}
+.row .nf{height:34px}
+.row .chev{color:var(--dim);font-size:30px}
+
+/* ---------- S5 línea de tiempo ---------- */
+.track{position:relative;margin-top:140px;height:420px}
+.track .bar{position:absolute;left:0;right:0;top:200px;height:6px;border-radius:6px;background:var(--panel-2)}
+.track .fill{position:absolute;left:0;top:200px;height:6px;border-radius:6px;background:linear-gradient(90deg,var(--red),#ff7a85);width:0}
+.slide.active .track .fill{animation:fill 2.4s var(--ease) .5s forwards}
+@keyframes fill{to{width:100%}}
+.track .head{position:absolute;top:186px;left:0;width:34px;height:34px;margin-left:-17px;border-radius:50%;background:#fff;box-shadow:0 0 24px var(--red)}
+.slide.active .track .head{animation:head 2.4s var(--ease) .5s forwards}
+@keyframes head{to{left:100%}}
+.nodes{position:absolute;inset:0;display:grid;grid-template-columns:repeat(8,1fr)}
+.node{position:relative;display:flex;flex-direction:column;align-items:center;text-align:center}
+.node .dot{position:absolute;top:193px;width:20px;height:20px;border-radius:50%;background:var(--bg);border:3px solid var(--line-2)}
+.node .yr{font-size:46px;font-weight:700;margin-top:60px}
+.node .cap{font-size:24px;color:var(--muted);margin-top:200px;padding:0 10px;line-height:1.25}
+.node:nth-child(even) .yr{margin-top:260px}
+.node:nth-child(even) .cap{margin-top:0;order:-1;margin-top:40px}
+.media{position:absolute;bottom:100px;left:120px;right:120px;display:flex;justify-content:space-between;align-items:center;font:20px var(--mono);color:var(--muted)}
+.media .ctrls{display:flex;gap:46px;align-items:center}
+.media svg{height:34px;fill:var(--text)}
+
+/* ---------- S6-9 episodio ---------- */
+.ep .wrap{display:grid;grid-template-columns:1.1fr 1fr;gap:80px;height:100%}
+.ep.flip .wrap{grid-template-columns:1fr 1.1fr}
+.ep.flip .media-col{order:2}
+.ep .media-col{display:grid;grid-template-rows:1fr 190px;gap:20px;position:relative}
+.ep .thumbs{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.ep .thumbs .slot{border-radius:22px}
+.badge{position:absolute;top:28px;left:28px;z-index:2;display:flex;align-items:center;gap:14px;padding:14px 24px;border-radius:99px;
+  background:rgba(0,0,0,.55);backdrop-filter:blur(14px);border:1px solid var(--line-2);font:700 34px var(--sans)}
+.badge .s{color:var(--star)}
+.ep .info{display:flex;flex-direction:column;justify-content:center}
+.ep .title{font-size:84px;font-weight:700;letter-spacing:-.035em;line-height:.95;margin-top:22px}
+.ep .meta{font:500 22px var(--mono);letter-spacing:.14em;color:var(--blue);margin-top:22px}
+.stars{display:flex;gap:10px;margin-top:26px}
+.stars svg{width:44px;fill:var(--star)}
+.stars svg.off{fill:var(--panel-2)}
+.posts{display:flex;flex-direction:column;gap:16px;margin-top:40px}
+.post{padding:24px 30px;display:grid;grid-template-columns:200px 1fr;gap:22px;align-items:start}
+.post .k{font:600 17px var(--mono);letter-spacing:.14em;color:var(--muted);text-transform:uppercase;padding-top:6px}
+.post .v{font-size:28px;line-height:1.3}
+
+/* ---------- S10 temas (home screen) ---------- */
+.apps{display:grid;grid-template-columns:repeat(3,1fr);gap:110px 70px;margin-top:120px}
+.appc{display:grid;grid-template-columns:160px 1fr;gap:36px;align-items:center}
+.icon{width:160px;height:160px;border-radius:40px;display:grid;place-items:center;position:relative;overflow:hidden}
+.icon::after{content:"";position:absolute;inset:0;border-radius:inherit;box-shadow:inset 0 1px 0 rgba(255,255,255,.25)}
+.icon svg{width:76px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.badge-n{position:absolute;top:-10px;right:-10px;width:44px;height:44px;border-radius:50%;background:var(--red);font:700 22px var(--sans);display:grid;place-items:center;z-index:3;border:4px solid var(--bg)}
+.iconwrap{position:relative}
+.appc .t{font-size:44px;font-weight:700;line-height:1.05}
+.appc .d{font-size:27px;color:var(--muted);margin-top:10px;line-height:1.3}
+
+/* ---------- S11 ficción vs realidad ---------- */
+.vs{display:grid;grid-template-columns:1fr 120px 1fr;margin-top:56px;height:700px}
+.side{padding:40px;display:flex;flex-direction:column;gap:20px;border-radius:28px;position:relative;overflow:hidden}
+.side.a{background:linear-gradient(160deg,rgba(255,45,61,.16),rgba(255,45,61,.02));border:1px solid rgba(255,45,61,.35)}
+.side.b{background:linear-gradient(200deg,rgba(61,169,255,.16),rgba(61,169,255,.02));border:1px solid rgba(61,169,255,.35)}
+.side .slot{height:230px;border-radius:20px;flex:none}
+.side .it{font-size:30px;padding:20px 26px;border-radius:18px;background:rgba(0,0,0,.35);border:1px solid var(--line)}
+.mid{display:flex;align-items:center;justify-content:center;position:relative}
+.mid span{font:700 54px var(--sans);letter-spacing:-.04em;z-index:2;background:var(--bg);padding:18px 0}
+.mid::before{content:"";position:absolute;top:0;bottom:0;left:50%;width:2px;background:linear-gradient(var(--red),var(--blue))}
+
+/* ---------- S12 cita (nota de voz) ---------- */
+.s12 .bgimg{position:absolute;inset:0;background:url(img/nosedive-1.png) center/cover;filter:blur(40px) brightness(.28) saturate(1.3);transform:scale(1.15)}
+.s12 .wrap{position:relative;height:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center}
+.s12 .q{font-size:80px;font-weight:700;letter-spacing:-.04em;line-height:1;max-width:1500px;margin-top:40px}
+.s12 .q::before{content:"“";color:var(--red)} .s12 .q::after{content:"”";color:var(--red)}
+.s12 .who{font:500 24px var(--mono);letter-spacing:.2em;color:var(--blue);margin-top:46px;text-transform:uppercase}
+.wave{display:flex;gap:8px;align-items:center;height:110px;margin-top:70px}
+.wave i{width:8px;border-radius:8px;background:rgba(255,255,255,.75);height:14%;animation:wv 1.1s ease-in-out infinite;animation-play-state:paused}
+.s12.playing .wave i{animation-play-state:running}
+@keyframes wv{0%,100%{height:14%}50%{height:100%}}
+.player{display:flex;align-items:center;gap:36px;margin-top:70px}
+.player .wave{margin-top:0}
+.playbtn{width:120px;height:120px;border-radius:50%;border:0;background:var(--red);display:grid;place-items:center;cursor:pointer;box-shadow:0 0 0 0 rgba(255,45,61,.6);transition:transform .2s var(--ease);flex:none}
+.playbtn:hover{transform:scale(1.06)}
+.playbtn:focus-visible{outline:3px solid var(--blue);outline-offset:6px}
+.s12.playing .playbtn{animation:ring 1.6s infinite}
+@keyframes ring{0%{box-shadow:0 0 0 0 rgba(255,45,61,.55)}100%{box-shadow:0 0 0 40px rgba(255,45,61,0)}}
+.playbtn svg{width:46px;fill:#fff}
+.playbtn .pa{display:none}.s12.playing .playbtn .pa{display:block}.s12.playing .playbtn .pl{display:none}
+.player.noaudio .playbtn{background:var(--panel-2)}
+.audhint{font:500 18px var(--mono);letter-spacing:.14em;color:var(--dim);margin-top:26px;text-transform:uppercase;min-height:24px}
+.s12.drag{outline:4px solid var(--blue);outline-offset:-20px}
+
+/* ---------- rompehielo (calificar en vivo) ---------- */
+.ice .wrap{display:grid;grid-template-columns:1.15fr 1fr;gap:80px;height:100%}
+.ice .left{display:flex;flex-direction:column}
+.ice h2{font-size:96px}
+.scene{margin-top:56px;padding:56px 60px;flex:1;display:flex;flex-direction:column;justify-content:space-between;position:relative;overflow:hidden}
+.scene .cnt{font:600 20px var(--mono);letter-spacing:.2em;color:var(--blue)}
+.scene .txt{font-size:62px;font-weight:700;letter-spacing:-.03em;line-height:1.02;margin-top:20px}
+.scene .txt.swap{animation:glitchIn .8s steps(1) both}
+.scene .how{font:500 22px var(--mono);letter-spacing:.06em;color:var(--muted);line-height:1.5}
+.scene .how b{color:var(--text)}
+.scene .nav2{display:flex;gap:14px;margin-top:22px}
+.chip{font:600 18px var(--mono);letter-spacing:.1em;color:var(--text);background:var(--panel-2);border:1px solid var(--line-2);border-radius:99px;padding:14px 26px;cursor:pointer}
+.chip:hover{background:rgba(255,255,255,.14)}
+.chip:focus-visible{outline:3px solid var(--blue);outline-offset:3px}
+.meter{padding:52px 56px;display:flex;flex-direction:column;align-items:center;text-align:center}
+.meter .k{font:600 20px var(--mono);letter-spacing:.2em;color:var(--muted);text-transform:uppercase}
+.meter .avg{font-size:230px;font-weight:300;letter-spacing:-.06em;line-height:.9;margin-top:26px;font-variant-numeric:tabular-nums;transition:color .5s}
+.meter .avg.bump{animation:bump .45s var(--ease)}
+@keyframes bump{40%{transform:scale(1.08)}}
+.meter .votes{font:500 22px var(--mono);letter-spacing:.12em;color:var(--muted);margin-top:14px}
+.bigstars{display:flex;gap:16px;margin-top:34px}
+.bigstars button{background:none;border:0;cursor:pointer;padding:0;position:relative}
+.bigstars svg{width:86px;fill:var(--panel-2);transition:transform .2s var(--ease),fill .25s}
+.bigstars svg.on{fill:var(--star)}
+.bigstars button:hover svg{transform:scale(1.15)}
+.bigstars button:focus-visible{outline:3px solid var(--blue);outline-offset:4px;border-radius:12px}
+.bigstars .n{position:absolute;left:0;right:0;bottom:-30px;font:600 16px var(--mono);color:var(--dim)}
+.dist{width:100%;display:flex;flex-direction:column;gap:12px;margin-top:62px}
+.dist .r{display:grid;grid-template-columns:70px 1fr 60px;gap:16px;align-items:center;font:600 20px var(--mono);color:var(--muted)}
+.dist .bar{height:14px;border-radius:14px;background:var(--panel-2);overflow:hidden}
+.dist .bar i{display:block;height:100%;width:0;border-radius:14px;background:var(--star);transition:width .6s var(--ease)}
+.pop{position:absolute;font:700 46px var(--sans);color:var(--star);pointer-events:none;animation:floatUp 1s ease-out forwards;z-index:5}
+@keyframes floatUp{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(-120px)}}
+.recap{margin-top:40px;display:flex;flex-direction:column;gap:10px;max-width:880px}
+.recap .k{font:600 17px var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--dim)}
+.recap .r{display:flex;justify-content:space-between;gap:20px;font-size:26px;color:var(--muted);border-bottom:1px solid var(--line);padding-bottom:8px}
+.recap .r b{color:var(--star);font-weight:700;white-space:nowrap}
+.rate .votes{font:500 20px var(--mono);letter-spacing:.12em;color:var(--muted);margin-top:30px}
+
+/* ---------- S13 conclusiones ---------- */
+.stack{display:flex;flex-direction:column;gap:34px;margin-top:90px}
+.stack .notif{grid-template-columns:110px 1fr auto;padding:50px 56px}
+.stack .ic{width:110px;height:110px;border-radius:26px;font-size:42px}
+.stack .t{font-size:48px}
+
+/* ---------- S14 cierre ---------- */
+.s14 .wrap{display:grid;grid-template-columns:1.2fr 1fr;gap:90px;height:100%;align-items:center}
+.s14 h1{font-size:150px;white-space:nowrap}
+.s14 .thx{font:700 48px var(--sans);color:var(--red);margin-top:30px;letter-spacing:.08em}
+.rate{padding:56px;text-align:center}
+.rate .k{font:600 20px var(--mono);letter-spacing:.2em;color:var(--muted);text-transform:uppercase}
+.rate .score{font-size:170px;font-weight:300;letter-spacing:-.05em;margin-top:20px;font-variant-numeric:tabular-nums}
+.rate .stars{justify-content:center;margin-top:10px}
+.rate .stars{gap:14px}
+.rate .stars button{background:none;border:0;padding:0;cursor:pointer;position:relative}
+.rate .stars button:focus-visible{outline:3px solid var(--blue);outline-offset:4px;border-radius:12px}
+.rate .stars svg{width:78px;fill:var(--panel-2);transition:transform .2s var(--ease),fill .2s}
+.rate .stars svg.on{fill:var(--star)}
+.rate .stars button:hover svg{transform:scale(1.18)}
+.rate .stars .n{position:absolute;left:0;right:0;bottom:-26px;font:600 15px var(--mono);color:var(--dim)}
+.src{margin-top:60px;font-size:24px;color:var(--muted);line-height:1.4}
+.src .k{font:600 17px var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--dim);display:block;margin-bottom:8px}
+
+/* ---------- UI de control ---------- */
+.hud{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);display:flex;gap:10px;align-items:center;z-index:100;
+  font:13px var(--mono);color:#9aa0a8;background:rgba(15,15,18,.85);border:1px solid rgba(255,255,255,.12);padding:10px 16px;border-radius:99px;
+  transition:opacity .5s;backdrop-filter:blur(10px)}
+.hud.hide{opacity:0;pointer-events:none}
+.hud kbd{font:600 12px var(--mono);color:#fff;border:1px solid rgba(255,255,255,.25);border-radius:6px;padding:2px 7px}
+.hud button{font:600 12px var(--mono);color:#fff;background:transparent;border:1px solid rgba(255,255,255,.25);border-radius:99px;padding:6px 12px;cursor:pointer}
+.hud button:hover{background:rgba(255,255,255,.1)}
+.editbar{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:100;display:none;gap:12px;align-items:center;
+  font:600 13px var(--mono);background:var(--blue);color:#001426;padding:10px 18px;border-radius:99px}
+body.editing .editbar{display:flex}
+.editbar button{font:600 12px var(--mono);border:0;border-radius:99px;padding:6px 12px;cursor:pointer;background:#001426;color:#fff}
+.nav{position:fixed;top:0;bottom:0;width:12%;z-index:60;cursor:pointer}
+.nav.l{left:0}.nav.r{right:0}
+body.editing .nav{display:none}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
+@media print{
+  @page{size:1920px 1080px;margin:0}
+  html,body{overflow:visible;height:auto;display:block}
+  #stage{position:relative;left:0;top:0;transform:none!important;height:auto;overflow:visible}
+  .slide{display:block!important;position:relative;width:1920px;height:1080px;page-break-after:always;overflow:hidden;background:var(--bg)}
+  .slide [data-a]{animation:none!important;opacity:1!important}
+  .status,.homebar,.progress,.hud,.nav,.editbar,#crack,#flash{display:none!important}
+  [data-edit]:empty::before{content:""}
+}
+
+/* ================= v2 · Nosedive según rúbrica ================= */
+:root{color-scheme:dark}
+/* etiqueta de sección de la rúbrica */
+.sec{display:inline-flex;align-items:center;gap:14px}
+.sec b{font:700 20px var(--mono);color:#000;background:var(--red);border-radius:8px;padding:4px 10px;letter-spacing:.06em}
+.sub{font-size:30px;color:var(--muted);margin-top:22px;max-width:1400px;line-height:1.3}
+.sub em{font-style:normal;color:var(--text)}
+
+/* línea de tiempo: el año es un puntaje */
+.node .yr{font-variant-numeric:tabular-nums}
+.node .yr.down{color:var(--red)} .node .yr.up{color:var(--star)} .node .yr.free{color:#3BE07A}
+.node .cap{font-size:25px}
+
+/* conceptos: apps con autor */
+.apps.c6{gap:70px 60px;margin-top:70px}
+.appc .au{font:600 17px var(--mono);letter-spacing:.12em;color:var(--blue);text-transform:uppercase;margin-top:8px}
+.appc .t{font-size:40px}
+.appc .d{font-size:25px}
+
+/* tablas tipo ajustes */
+.tbl{margin-top:54px;padding:6px 0}
+.tbl .tr{display:grid;grid-template-columns:var(--cols);gap:30px;align-items:center;padding:24px 40px;border-bottom:1px solid var(--line)}
+.tbl .tr:last-child{border:0}
+.tbl .th{font:600 17px var(--mono);letter-spacing:.16em;color:var(--dim);text-transform:uppercase;padding-top:18px;padding-bottom:14px}
+.tbl .c{font-size:28px;line-height:1.28}
+.tbl .c.big{font-size:36px;font-weight:700;letter-spacing:-.02em}
+.tbl .c.mut{color:var(--muted);font-size:25px}
+.yes,.no{font:700 30px var(--mono)} .yes{color:#3BE07A} .no{color:var(--red)}
+.lv{display:inline-block;font:600 16px var(--mono);letter-spacing:.12em;text-transform:uppercase;padding:9px 16px;border-radius:99px;border:1px solid var(--line-2);color:var(--muted)}
+.lv.l1{color:var(--red);border-color:rgba(255,45,61,.5);background:rgba(255,45,61,.1)}
+.lv.l2{color:var(--star);border-color:rgba(255,194,75,.5);background:rgba(255,194,75,.08)}
+.lv.l3{color:var(--blue);border-color:rgba(61,169,255,.5);background:rgba(61,169,255,.08)}
+.chips{display:flex;flex-wrap:wrap;gap:14px;margin-top:34px}
+.chips span{font:500 21px var(--mono);letter-spacing:.04em;color:var(--muted);padding:12px 22px;border-radius:99px;border:1px solid var(--line-2);background:var(--panel)}
+.chips span b{color:var(--text);font-weight:600}
+
+/* notificaciones con subtítulo */
+.notif .s2t{font-size:26px;color:var(--muted);margin-top:8px;line-height:1.3}
+.stack.tight{gap:26px;margin-top:64px}
+.stack.tight .notif{padding:36px 50px}
+.stack.tight .t{font-size:42px}
+
+/* VS sin imágenes */
+.vs.list{height:auto}
+.vs.list .side{gap:18px}
+.vs.list .it{font-size:31px}
+
+/* chat: avatar con foto */
+.chat .av.ph img{width:100%;height:100%;object-fit:cover;mix-blend-mode:normal}
+.bub small{display:block;font:500 15px var(--mono);letter-spacing:.12em;color:var(--dim);margin-bottom:6px;text-transform:uppercase}
+
+/* dilemas */
+.dil .wrap{display:grid;grid-template-columns:.74fr 1.26fr;gap:70px;height:100%}
+.dil .mcol{position:relative}
+.dil .mcol .slot{height:100%}
+.dil .info{display:flex;flex-direction:column}
+.dil .q{font-size:64px;font-weight:700;letter-spacing:-.03em;line-height:1.02;margin-top:18px}
+.conflict{display:flex;align-items:center;gap:20px;margin-top:28px;flex-wrap:wrap}
+.conflict span{padding:12px 26px;border-radius:99px;font:600 25px var(--sans)}
+.conflict .va{background:rgba(61,169,255,.14);border:1px solid rgba(61,169,255,.5)}
+.conflict .vb{background:rgba(255,45,61,.14);border:1px solid rgba(255,45,61,.5)}
+.conflict i{font-style:normal;color:var(--muted);font:600 18px var(--mono);letter-spacing:.14em}
+.lenses{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:30px}
+.lens{padding:22px 28px}
+.lens .k{font:600 16px var(--mono);letter-spacing:.14em;color:var(--muted);text-transform:uppercase}
+.lens .k b{color:var(--text);font-weight:600}
+.lens .v{font-size:24px;line-height:1.32;margin-top:10px}
+.cls{margin-top:24px;font:500 19px var(--mono);color:var(--blue);letter-spacing:.04em;line-height:1.5}
+
+/* responsabilidades: más compacta */
+.resp h2{font-size:92px}
+.resp .tbl{margin-top:36px}
+.resp .tbl .tr{padding:18px 40px}
+.resp .tbl .c.big{font-size:31px}
+.resp .tbl .c{font-size:26px}
+
+/* tablas que no son la de responsabilidades: más aire */
+.tblS:not(.resp) .tbl{margin-top:70px}
+.tblS:not(.resp) .tbl .tr{padding:34px 40px}
+.tblS:not(.resp) .tbl .c{font-size:31px}
+.tblS:not(.resp) .tbl .c.big{font-size:40px}
+.tblS:not(.resp) .chips{margin-top:46px}
+
+/* celular: el HUD solo deja el botón */
+@media (max-width:700px){.hud{font-size:0;gap:0;padding:6px}.hud kbd{display:none}}
+
+/* comprobación */
+.quiz .wrap{display:grid;grid-template-columns:1.35fr .65fr;gap:70px;height:100%}
+.quiz .left{display:flex;flex-direction:column}
+.qcard{margin-top:46px;padding:56px 60px;flex:1;display:flex;flex-direction:column;justify-content:space-between}
+.qtag{font:600 20px var(--mono);letter-spacing:.2em;color:var(--blue);text-transform:uppercase}
+.qtxt{font-size:60px;font-weight:700;letter-spacing:-.03em;line-height:1.06;margin-top:22px}
+.qtxt.swap{animation:glitchIn .8s steps(1) both}
+.hint{font-size:28px;color:var(--star);line-height:1.35;border-left:4px solid var(--star);padding-left:24px;filter:blur(9px);opacity:.45;transition:.5s var(--ease);user-select:none}
+.quiz.reveal .hint{filter:none;opacity:1}
+.hintk{font:600 16px var(--mono);letter-spacing:.18em;color:var(--dim);text-transform:uppercase;margin-bottom:12px}
+.quiz.reveal .hintk{color:var(--star)}
+.qsteps{padding:44px 40px;display:flex;flex-direction:column;gap:14px;justify-content:center}
+.qsteps .k{font:600 18px var(--mono);letter-spacing:.2em;color:var(--muted);text-transform:uppercase;margin-bottom:12px}
+.qs{width:100%;display:grid;grid-template-columns:52px 1fr;gap:18px;align-items:center;padding:16px 20px;border-radius:18px;font-size:25px;color:var(--muted);border:1px solid transparent;cursor:pointer;background:none;text-align:left;font-family:var(--sans)}
+.qs .n{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;font:600 20px var(--mono);border:1px solid var(--line-2)}
+.qs.on{color:var(--text);background:var(--panel-2);border-color:var(--line-2)}
+.qs.on .n{background:var(--red);border-color:var(--red);color:#fff}
+.qs:focus-visible{outline:3px solid var(--blue);outline-offset:3px}
+</style>
+</head>
+<body>
+<div class="editbar">MODO EDICIÓN · escribe sobre cualquier texto · los cambios se guardan solos
+  <button id="votesBtn">Reiniciar votos</button><button id="resetBtn">Borrar todo</button><button id="doneBtn">Listo (E)</button></div>
+<input type="file" id="filePick" accept="image/*" hidden>
+<div class="nav l" id="navL" aria-label="Anterior"></div><div class="nav r" id="navR" aria-label="Siguiente"></div>
+
+<div id="stage">
+  <div class="status">
+    <span class="rec"><i></i>BLACK MIRROR OS</span>
+    <b id="sbClock">00:00</b>
+    <span class="right">
+      <span id="sbCount">01 / 22</span>
+      <svg viewBox="0 0 24 16"><rect x="0" y="11" width="4" height="5" rx="1"/><rect x="6" y="7" width="4" height="9" rx="1"/><rect x="12" y="3" width="4" height="13" rx="1"/><rect x="18" y="0" width="4" height="16" rx="1" opacity=".35"/></svg>
+      <svg viewBox="0 0 34 16"><rect x=".5" y=".5" width="28" height="15" rx="4" fill="none" stroke="#F3F4F6"/><rect x="3" y="3" width="9" height="10" rx="2" fill="#FF2D3D"/><rect x="30" y="5" width="3" height="6" rx="1"/></svg>
+    </span>
+  </div>
+
+  <!-- 1 · BLOQUEO -->
+  <section class="slide s1">
+    <div class="wall"></div>
+    <div class="wrap">
+      <div>
+        <img class="logo" src="img/logo-blackmirror.png" alt="Black Mirror" data-a="glitch">
+        <div class="clock" id="bigClock" data-a style="--d:2">00:00</div>
+        <div class="date" id="bigDate" data-a style="--d:3">—</div>
+      </div>
+      <div class="notifs">
+        <div class="notif glass" data-a="right" style="--d:4"><div class="ic"><img src="img/logo-blackmirror.png" alt=""></div>
+          <div><div class="app">Black Mirror · T3 E1</div><div class="t" data-edit="s1-tema" data-ph="Tema">Caída en picada (Nosedive): cuando tu valor es un número</div></div><span class="time">ahora</span></div>
+        <div class="notif glass" data-a="right" style="--d:6"><div class="ic">◉</div>
+          <div><div class="app">Grupo</div><div class="t" data-edit="s1-nombre" data-ph="Nombres del grupo">María Clara Gómez · Tomás Mejía · Emmanuel Ortiz · Alejandro Ángel</div></div><span class="time">1 min</span></div>
+        <div class="notif glass" data-a="right" style="--d:8"><div class="ic">▣</div>
+          <div><div class="app">Materia · Fecha</div><div class="t" data-edit="s1-materia" data-ph="Materia · fecha">Retos de la Ciudadanía Digital · EAFIT · 16/10/2026</div></div><span class="time">2 min</span></div>
+      </div>
+    </div>
+    <div class="unlock">Presiona → para desbloquear</div>
+  </section>
+
+  <!-- 2 · ROMPEHIELO -->
+  <section class="slide ice">
+    <div class="wrap">
+      <div class="left">
+        <div class="label red" data-a>Antes de empezar · Calificación en vivo</div>
+        <h2 data-a="glitch" style="--d:1">¿Cuántas estrellas le das?</h2>
+        <div class="scene glass" data-a="left" style="--d:2">
+          <div>
+            <div class="cnt" id="iceCnt">SITUACIÓN 1 / 4</div>
+            <div class="txt" id="iceTxt"></div>
+          </div>
+          <div>
+            <div class="how">Levanten la mano con <b>1 a 5 dedos</b>.<br>Por cada mano: tecla <b>1–5</b> o clic en la estrella.</div>
+            <div class="nav2"><button class="chip" id="icePrev">↑ Anterior</button><button class="chip" id="iceNext">Siguiente ↓</button><button class="chip" id="iceUndo">Deshacer (Z)</button></div>
+          </div>
+        </div>
+        <div hidden id="iceSrc">
+          <span data-edit="ice-s0">Alguien saluda cuando entra al salón</span>
+          <span data-edit="ice-s1">Alguien le grita al mesero porque se demoró el pedido</span>
+          <span data-edit="ice-s2">Alguien le toma foto a su comida antes de comer</span>
+          <span data-edit="ice-s3">El domiciliario llegó 30 minutos tarde… porque paró a ayudar en un accidente</span>
+        </div>
+      </div>
+      <div class="meter glass" data-a="right" style="--d:3">
+        <div class="k">Calificación del salón</div>
+        <div class="avg" id="iceAvg">–</div>
+        <div class="votes" id="iceVotes">0 VOTOS</div>
+        <div class="bigstars" id="iceStars"></div>
+        <div class="dist" id="iceDist"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 · AGENDA = los 6 puntos de la consigna -->
+  <section class="slide s2">
+    <div class="head">
+      <div><div class="label red" data-a>Hoy · Recordatorios</div><h2 data-a="glitch" style="--d:1">Agenda</h2></div>
+      <span class="pill" data-a style="--d:2">6 PENDIENTES · 20 MIN</span>
+    </div>
+    <div class="grid">
+      <div class="todo glass" data-a style="--d:3"><span class="n">01</span><div class="t" data-edit="s2-1">Resumen del capítulo</div><span class="chk"></span></div>
+      <div class="todo glass" data-a style="--d:4"><span class="n">02</span><div class="t" data-edit="s2-2">Conceptos y teorías</div><span class="chk"></span></div>
+      <div class="todo glass" data-a style="--d:5"><span class="n">03</span><div class="t" data-edit="s2-3">Casos de la vida real</div><span class="chk"></span></div>
+      <div class="todo glass" data-a style="--d:6"><span class="n">04</span><div class="t" data-edit="s2-4">Dilemas éticos</div><span class="chk"></span></div>
+      <div class="todo glass" data-a style="--d:7"><span class="n">05</span><div class="t" data-edit="s2-5">Responsabilidades</div><span class="chk"></span></div>
+      <div class="todo glass" data-a style="--d:8"><span class="n">06</span><div class="t" data-edit="s2-6">¿Pusieron atención?</div><span class="chk"></span></div>
+    </div>
+  </section>
+
+  <!-- 4 · FICHA TÉCNICA -->
+  <section class="slide s4">
+    <div class="wrap">
+      <div>
+        <div class="label red sec" data-a><b>01</b>Ajustes › Información</div>
+        <h2 data-a="glitch" style="--d:1">Ficha<br>técnica</h2>
+        <img class="logo" src="img/logo-blackmirror.png" alt="" data-a style="--d:3">
+      </div>
+      <div class="settings glass" data-a="right" style="--d:2">
+        <div class="row"><span class="k">Episodio</span><span class="v" data-edit="s4-1">T3 · E1 · Caída en picada</span><span class="chev">›</span></div>
+        <div class="row"><span class="k">Dirección</span><span class="v" data-edit="s4-2">Joe Wright</span><span class="chev">›</span></div>
+        <div class="row"><span class="k">Guion</span><span class="v" data-edit="s4-3">Rashida Jones y Michael Schur, sobre una historia de Charlie Brooker</span><span class="chev">›</span></div>
+        <div class="row"><span class="k">Protagonista</span><span class="v" data-edit="s4-4">Bryce Dallas Howard (Lacie)</span><span class="chev">›</span></div>
+        <div class="row"><span class="k">Estreno</span><span class="v" data-edit="s4-5">21 de octubre de 2016</span><span class="chev">›</span></div>
+        <div class="row"><span class="k">Plataforma</span><span class="v"><img class="nf" src="img/logo-netflix.png" alt="Netflix"></span><span class="chev">›</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5 · RESUMEN = la caída de Lacie en puntajes -->
+  <section class="slide s5">
+    <div class="label red sec" data-a><b>01</b>Reproduciendo · Resumen</div>
+    <h2 data-a="glitch" style="--d:1">La caída de Lacie</h2>
+    <div class="track" data-a style="--d:2">
+      <div class="bar"></div><div class="fill"></div>
+      <div class="nodes">
+        <div class="node"><span class="dot"></span><div class="yr" data-edit="s5-y0">4.2</div><div class="cap" data-edit="s5-c0">Lacie: amable, pero no suficiente</div></div>
+        <div class="node"><span class="dot"></span><div class="yr up" data-edit="s5-y1">4.5</div><div class="cap" data-edit="s5-c1">La meta: el descuento en Pelican Cove</div></div>
+        <div class="node"><span class="dot"></span><div class="yr up" data-edit="s5-y2">4.8</div><div class="cap" data-edit="s5-c2">Naomi la invita a ser dama de honor</div></div>
+        <div class="node"><span class="dot"></span><div class="yr down" data-edit="s5-y3">4.183</div><div class="cap" data-edit="s5-c3">Tropiezos en cadena</div></div>
+        <div class="node"><span class="dot"></span><div class="yr down" data-edit="s5-y4">−1★</div><div class="cap" data-edit="s5-c4">Aeropuerto: castigo y “doble daño”</div></div>
+        <div class="node"><span class="dot"></span><div class="yr down" data-edit="s5-y5">1.4</div><div class="cap" data-edit="s5-c5">Susan, la camionera que dejó de actuar</div></div>
+        <div class="node"><span class="dot"></span><div class="yr down" data-edit="s5-y6">&lt;1</div><div class="cap" data-edit="s5-c6">La boda: dice todo lo que piensa</div></div>
+        <div class="node"><span class="dot"></span><div class="yr free" data-edit="s5-y7">0</div><div class="cap" data-edit="s5-c7">Cárcel, sin implantes… y libre</div></div>
+      </div>
+      <div class="head"></div>
+    </div>
+    <div class="media" data-a style="--d:4">
+      <span>00:00</span>
+      <span class="ctrls">
+        <svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg>
+        <svg viewBox="0 0 24 24" style="height:46px"><path d="M7 4h4v16H7zM13 4h4v16h-4z"/></svg>
+        <svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg>
+      </span>
+      <span>T3 · E1</span>
+    </div>
+  </section>
+
+  <!-- 6 · CONCEPTOS A: apps con autor -->
+  <section class="slide s10">
+    <div class="label red sec" data-a><b>02</b>Inicio · Apps instaladas por la clase</div>
+    <h2 data-a="glitch" style="--d:1">Conceptos y teorías</h2>
+    <div class="apps c6" id="apps"></div>
+  </section>
+
+  <!-- 7 · CONCEPTOS B: persuadir / manipular / coaccionar -->
+  <section class="slide tblS">
+    <div class="label red sec" data-a><b>02</b>Arquitecturas de decisión · Sesión 9</div>
+    <h2 data-a="glitch" style="--d:1">¿Persuade, manipula o te obliga?</h2>
+    <div class="tbl glass" data-a style="--d:2;--cols:250px 150px 170px 1fr">
+      <div class="tr th"><span>Tipo</span><span>¿Informa?</span><span>¿Respeta opciones?</span><span>En Caída en picada</span></div>
+      <div class="tr"><span class="c big">Persuasión</span><span class="yes">SÍ</span><span class="yes">SÍ</span><span class="c" data-edit="t1-1">Dar 5★ a un café que de verdad estuvo bueno</span></div>
+      <div class="tr"><span class="c big">Manipulación</span><span class="no">NO</span><span class="yes">SÍ</span><span class="c" data-edit="t1-2">El número flotante explota la necesidad de aprobación: calificamos en automático, con el Sistema 1</span></div>
+      <div class="tr"><span class="c big">Coerción</span><span class="no">NO</span><span class="no">NO</span><span class="c" data-edit="t1-3">“Acepta o vete”: sin 4.2 no vuelas, sin 4.5 no hay casa</span></div>
+    </div>
+    <div class="chips" data-a style="--d:4">
+      <span><b>Nudge social</b> · “la mayoría lo hace” (EAST)</span>
+      <span><b>Sistema 1</b> · rápido y emocional</span>
+      <span><b>McLuhan</b> · la herramienta nos forma</span>
+    </div>
+  </section>
+
+  <!-- 8 · CONCEPTOS C: Deibert -->
+  <section class="slide s13">
+    <div class="label red sec" data-a><b>02</b>3 notificaciones · Deibert (2019), Sesión 10</div>
+    <h2 data-a="glitch" style="--d:1">Tres verdades dolorosas</h2>
+    <div class="stack tight">
+      <div class="notif glass" data-a="right" style="--d:3"><div class="ic">01</div><div><div class="t" data-edit="d-1">Las redes viven de vigilarnos</div><div class="s2t" data-edit="d-1s">En el episodio, cada gesto queda registrado y calificado.</div></div><span class="time">ahora</span></div>
+      <div class="notif glass" data-a="right" style="--d:5"><div class="ic">02</div><div><div class="t" data-edit="d-2">Lo aceptamos voluntariamente</div><div class="s2t" data-edit="d-2s">Nadie obliga a Lacie a calificar, pero todos lo hacen.</div></div><span class="time">ahora</span></div>
+      <div class="notif glass" data-a="right" style="--d:7"><div class="ic">03</div><div><div class="t" data-edit="d-3">Son útiles para el autoritarismo</div><div class="s2t" data-edit="d-3s">La seguridad del aeropuerto le quita un punto sin juicio.</div></div><span class="time">ahora</span></div>
+    </div>
+  </section>
+
+  <!-- 9 · CASOS A: ficción vs. realidad -->
+  <section class="slide s11">
+    <div class="label red sec" data-a><b>03</b>Comparar</div>
+    <h2 data-a="glitch" style="--d:1">Ficción vs. realidad</h2>
+    <div class="vs">
+      <div class="side a" data-a="left" style="--d:2">
+        <div class="label red">En la serie</div>
+        <div class="slot" data-img="s11-a" data-default="img/nosedive-pelican-cove.webp" data-pos="50% 6%"></div>
+        <div class="it" data-edit="s11-a1">Con 4.5★ tienes descuento en Pelican Cove</div>
+        <div class="it" data-edit="s11-a2">Sin 4.2★ no puedes comprar otro vuelo</div>
+      </div>
+      <div class="mid" data-a="pop" style="--d:4"><span>VS</span></div>
+      <div class="side b" data-a="right" style="--d:3">
+        <div class="label blue">En la vida real · China</div>
+        <div class="slot" data-img="s11-b" data-default="img/real-china-camaras.jpg"></div>
+        <div class="it" data-edit="s11-b1">Sesame Credit (Alibaba): con buen puntaje alquilas bicis, carros y hasta apartamentos sin depósito</div>
+        <div class="it" data-edit="s11-b2">Personas en listas de deudores han sido vetadas de comprar tiquetes de avión y tren</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 10 · CASOS B: noticias -->
+  <section class="slide ep flip">
+    <div class="wrap">
+      <div class="media-col" data-a="left">
+        <div class="slot main" data-img="news-main" data-default="img/real-peeple-app.jpg"></div>
+        <div class="badge"><span class="s">★</span><span data-edit="news-badge">Ya pasó</span></div>
+        <div class="thumbs"><div class="slot" data-img="news-t1" data-default="img/real-uber-calificacion.png"></div><div class="slot" data-img="news-t2" data-default="img/nosedive-celular.jpg"></div></div>
+      </div>
+      <div class="info">
+        <div class="label red sec" data-a><b>03</b>Noticias verificables</div>
+        <div class="title" data-a="glitch" style="--d:1">Esto no es ciencia ficción</div>
+        <div class="meta" data-a style="--d:2">PEEPLE · INSTAGRAM · META · UBER</div>
+        <div class="posts">
+          <div class="post glass" data-a style="--d:4"><span class="k">Peeple · 2015</span><span class="v" data-edit="n-1">Una app para calificar a cualquier persona de 1 a 5★, aunque no se hubiera registrado. La reacción en contra la tumbó.</span></div>
+          <div class="post glass" data-a style="--d:5"><span class="k">Instagram · 2019</span><span class="v" data-edit="n-2">Su director, Adam Mosseri, dijo que este episodio lo inspiró a probar ocultar los likes.</span></div>
+          <div class="post glass" data-a style="--d:6"><span class="k">Meta · 2021</span><span class="v" data-edit="n-3">Documentos internos: 32% de las adolescentes que se sentían mal con su cuerpo dijeron que Instagram las hacía sentir peor.</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 11 · DILEMAS: beneficios vs. riesgos -->
+  <section class="slide s11">
+    <div class="label red sec" data-a><b>04</b>La tecnología del episodio</div>
+    <h2 data-a="glitch" style="--d:1">Beneficios vs. riesgos</h2>
+    <div class="vs list">
+      <div class="side b" data-a="left" style="--d:2">
+        <div class="label blue">Lo que promete</div>
+        <div class="it" data-edit="br-b1">Confianza entre desconocidos, como en Uber o Airbnb</div>
+        <div class="it" data-edit="br-b2">Incentiva la amabilidad y el buen trato</div>
+        <div class="it" data-edit="br-b3">Cada quien responde por su conducta</div>
+      </div>
+      <div class="mid" data-a="pop" style="--d:4"><span>VS</span></div>
+      <div class="side a" data-a="right" style="--d:3">
+        <div class="label red">Lo que cuesta</div>
+        <div class="it" data-edit="br-r1">Exclusión de salud, vivienda y transporte</div>
+        <div class="it" data-edit="br-r2">La amabilidad se vuelve actuación</div>
+        <div class="it" data-edit="br-r3">Castigos sin debido proceso</div>
+        <div class="it" data-edit="br-r4">Si bajas, te bajan más: discriminación en cadena</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 12 · DILEMAS: chat con Susan -->
+  <section class="slide s3">
+    <div class="wrap">
+      <div class="slot" data-img="s3-img" data-default="img/nosedive-susan.jpg" data-pos="45% 50%" data-a="left"></div>
+      <div class="chat glass" data-a="right" style="--d:1">
+        <div class="top"><div class="av ph"><img src="img/nosedive-susan.jpg" alt="" style="object-position:44% 30%"></div>
+          <div><div class="nm">Susan · 1.4 ★</div><div class="on">● EN LÍNEA · PARÁFRASIS DEL EPISODIO</div></div></div>
+        <div class="body">
+          <div class="bub in" data-a style="--d:3"><span data-edit="ch-1">Yo era 4.6. Me importaba cada estrella.</span></div>
+          <div class="bub in" data-a style="--d:6"><span data-edit="ch-2">A mi esposo le negaron un tratamiento contra el cáncer: tenía 4.3. El cupo fue para alguien de 4.4.</span></div>
+          <div class="bub out" data-a style="--d:9"><span data-edit="ch-3">¿Y qué hiciste?</span></div>
+          <div class="bub in" data-a style="--d:12"><span data-edit="ch-4">Empecé a decir lo que pienso. Y se siente bien.</span></div>
+          <div class="typing" data-a style="--d:14"><i></i><i></i><i></i></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 13-16 · DILEMAS (se generan) -->
+  <template id="dilTpl">
+    <section class="slide dil">
+      <div class="wrap">
+        <div class="mcol" data-a="left"><div class="slot"></div><div class="badge"><span class="s">★</span><span class="bd"></span></div></div>
+        <div class="info">
+          <div class="label red sec lbl" data-a></div>
+          <div class="q" data-a="glitch" style="--d:1"></div>
+          <div class="conflict" data-a style="--d:2"><span class="va"></span><i>VS</i><span class="vb"></span></div>
+          <div class="lenses"></div>
+          <div class="cls" data-a style="--d:8"></div>
+        </div>
+      </div>
+    </section>
+  </template>
+
+  <!-- 17 · RESPONSABILIDADES -->
+  <section class="slide tblS resp">
+    <div class="label red sec" data-a><b>05</b>Reportar · ¿Quién responde?</div>
+    <h2 data-a="glitch" style="--d:1">Responsabilidades</h2>
+    <div class="tbl glass" data-a style="--d:2;--cols:330px 190px 1fr">
+      <div class="tr th"><span>Actor</span><span>Nivel</span><span>Qué le toca</span></div>
+      <div class="tr"><span class="c big">Empresa que diseña</span><span><span class="lv l1">Directo</span></span><span class="c" data-edit="r-1">Alguien programó el “doble daño” y los umbrales. La ética empieza en el diseño.</span></div>
+      <div class="tr"><span class="c big">Quien usa el puntaje</span><span><span class="lv l1">Directo</span></span><span class="c" data-edit="r-2">El hospital, la aerolínea y Pelican Cove: no pueden decidir derechos con un puntaje.</span></div>
+      <div class="tr"><span class="c big">Gobierno</span><span><span class="lv l2">Estructural</span></span><span class="c" data-edit="r-3">Regular, no usar: en el episodio, la seguridad del Estado aplica el sistema en vez de limitarlo.</span></div>
+      <div class="tr"><span class="c big">Usuarios</span><span><span class="lv l2">Compartido</span></span><span class="c" data-edit="r-4">Cada estrella es una decisión moral. Los invitados de la boda también la hunden.</span></div>
+      <div class="tr"><span class="c big">Sociedad y educación</span><span><span class="lv l3">Preventivo</span></span><span class="c" data-edit="r-5">Alfabetismo digital crítico: ver la arquitectura detrás del clic.</span></div>
+    </div>
+  </section>
+
+  <!-- 18 · ÉTICA TRASLACIONAL -->
+  <section class="slide tblS">
+    <div class="label red sec" data-a><b>05</b>Ética traslacional · Sesión 8</div>
+    <h2 data-a="glitch" style="--d:1">De la idea a la regla</h2>
+    <div class="tbl glass" data-a style="--d:2;--cols:300px 1fr 520px">
+      <div class="tr th"><span>Principio</span><span>Regla práctica</span><span>Ya existe</span></div>
+      <div class="tr"><span class="c big">Dignidad</span><span class="c" data-edit="tr-1">Ningún puntaje decide salud, vivienda o transporte</span><span class="c mut" data-edit="tr-1b">Ley de IA de la UE: prohíbe la puntuación social (art. 5, desde feb. 2025)</span></div>
+      <div class="tr"><span class="c big">Debido proceso</span><span class="c" data-edit="tr-2">Toda sanción se puede apelar ante una persona</span><span class="c mut" data-edit="tr-2b">Responsabilidad de la empresa y de quien sanciona</span></div>
+      <div class="tr"><span class="c big">Autonomía</span><span class="c" data-edit="tr-3">Puedes salirte sin perder servicios, y tus datos solo se usan con tu consentimiento</span><span class="c mut" data-edit="tr-3b">Colombia: Ley 1581 de 2012 (habeas data)</span></div>
+    </div>
+  </section>
+
+  <!-- 19 · COMPROBACIÓN -->
+  <section class="slide quiz">
+    <div class="wrap">
+      <div class="left">
+        <div class="label red sec" data-a><b>06</b>Califica a la clase</div>
+        <h2 data-a="glitch" style="--d:1">¿Pusieron atención?</h2>
+        <div class="qcard glass" data-a="left" style="--d:2">
+          <div>
+            <div class="qtag" id="qTag"></div>
+            <div class="qtxt" id="qTxt"></div>
+          </div>
+          <div><div class="hintk">Pista · toca la tarjeta o R</div><div class="hint" id="qHint"></div></div>
+        </div>
+      </div>
+      <div class="qsteps glass" data-a="right" style="--d:3">
+        <div class="k">↑ ↓ cambiar · R pista</div>
+        <div id="qList"></div>
+      </div>
+    </div>
+    <div hidden id="qSrc">
+      <span data-edit="q0">¿Por qué Naomi, con 4.8, invitó a Lacie, que tenía 4.2? ¿Qué ganaba ella?</span>
+      <span data-edit="q0h">Verse “auténtica”: una amiga de infancia de puntaje medio la hacía ver mejor. Gana-gana.</span>
+      <span data-edit="q1">El esposo de Susan perdió el tratamiento por 0.1 puntos. Si ustedes programaran ese algoritmo, ¿qué criterio usarían?</span>
+      <span data-edit="q1h">Moral Machine (Sesión 10): importa el criterio detrás del diseño, no solo la decisión.</span>
+      <span data-edit="q2">Deibert dice que aceptamos la vigilancia “voluntariamente”. ¿Lacie era libre de no participar? ¿Y ustedes de no tener WhatsApp?</span>
+      <span data-edit="q2h">Persuasión, manipulación o coerción: “acepta o vete” (Sesión 9).</span>
+    </div>
+  </section>
+
+  <!-- 20 · CITA -->
+  <section class="slide s12">
+    <div class="bgimg"></div>
+    <div class="wrap">
+      <div class="label red" data-a>● Nota de voz · <span id="audTime">0:00</span></div>
+      <div class="q" data-a="glitch" style="--d:1"><span data-edit="s12-q">Tengo que ser parte de este juego. Como todos, ¿verdad? Porque así es como este maldito mundo funciona</span></div>
+      <div class="who" data-a style="--d:3">— <span data-edit="s12-w">Lacie Pound · Caída en picada</span></div>
+      <div class="player noaudio" id="player" data-a style="--d:4">
+        <button class="playbtn" id="playBtn" aria-label="Reproducir audio">
+          <svg class="pl" viewBox="0 0 24 24"><path d="M7 4v16l13-8z"/></svg>
+          <svg class="pa" viewBox="0 0 24 24"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg>
+        </button>
+        <div class="wave" id="wave"></div>
+      </div>
+      <div class="audhint" id="audHint"></div>
+      <audio id="aud" preload="auto" src="audio/cita.mp4"></audio>
+    </div>
+  </section>
+
+  <!-- 21 · CONCLUSIONES -->
+  <section class="slide s13">
+    <div class="label red" data-a>3 notificaciones nuevas</div>
+    <h2 data-a="glitch" style="--d:1">Conclusiones</h2>
+    <div class="stack">
+      <div class="notif glass" data-a="right" style="--d:3"><div class="ic">01</div><div class="t" data-edit="s13-1">El problema no es calificar: es que un puntaje decida derechos.</div><span class="time">ahora</span></div>
+      <div class="notif glass" data-a="right" style="--d:5"><div class="ic">02</div><div class="t" data-edit="s13-2">La ética empieza en el diseño: alguien programó el “doble daño”.</div><span class="time">ahora</span></div>
+      <div class="notif glass" data-a="right" style="--d:7"><div class="ic">03</div><div class="t" data-edit="s13-3">Lacie solo fue libre cuando la desconectaron. El reto es serlo sin tocar fondo.</div><span class="time">ahora</span></div>
+    </div>
+  </section>
+
+  <!-- 22 · CIERRE -->
+  <section class="slide s14">
+    <div class="wrap">
+      <div>
+        <h1 data-a="glitch">¿Preguntas?</h1>
+        <div class="thx" data-a style="--d:2">GRACIAS</div>
+        <div class="recap" id="recap" data-a style="--d:3" hidden></div>
+        <div class="src" data-a style="--d:3"><span class="k">Fuentes</span><span data-edit="s14-src">Brooker, Jones y Schur (2016), Caída en picada · Véliz (2021) · Zuboff (2019) · Deibert (2019) · Floridi · Varoufakis · Foucault (1975) · Williams · Cobo (2019) · CBS (Peeple) · WSJ (Facebook Files)</span></div>
+      </div>
+      <div class="rate glass" data-a="pop" style="--d:3">
+        <div class="k">Califica esta presentación</div>
+        <div class="score" id="score">0.0</div>
+        <div class="stars" id="rateStars"></div>
+        <div class="votes" id="rateVotes">TOCA UNA ESTRELLA · TECLAS 1–5</div>
+      </div>
+    </div>
+  </section>
+
+  <svg id="crack" viewBox="0 0 1920 1080" preserveAspectRatio="none">
+    <path d="M1180 520 L1010 380 L930 120 L900 0"/><path d="M1180 520 L1420 300 L1600 260 L1920 120"/>
+    <path d="M1180 520 L1500 640 L1700 900 L1780 1080"/><path d="M1180 520 L1080 760 L1120 1080"/>
+    <path d="M1180 520 L860 600 L560 560 L0 700"/><path d="M1010 380 L760 330 L420 120"/>
+    <path d="M1500 640 L1920 600"/><path d="M1080 760 L820 900 L640 1080"/>
+    <path d="M1420 300 L1360 80"/><path d="M860 600 L700 820"/>
+  </svg>
+  <div id="flash"></div>
+  <div class="vignette"></div>
+  <div class="homebar"></div>
+  <div class="progress" id="prog"></div>
+</div>
+
+<div class="hud" id="hud"><kbd>←</kbd><kbd>→</kbd> navegar · <kbd>F</kbd> pantalla completa · <kbd>E</kbd> editar
+  <button id="editBtn">Editar</button></div>
+
+<script>
+const STAR='<svg viewBox="0 0 24 24"><path d="M12 2l2.9 6.9 7.1.6-5.4 4.7 1.7 7-6.3-3.9-6.3 3.9 1.7-7L2 9.5l7.1-.6z"/></svg>';
+const IMG_PH='<div class="ph"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/></svg>Arrastra una imagen aquí</div>';
+const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ---- conceptos (apps) ---- */
+const CONCEPTS=[
+  ['#FF2D3D','<circle cx="12" cy="12" r="3"/><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/>','Panóptico','Foucault · Bentham · S9','Todos califican a todos: no hace falta guardia. El panóptico ya es una app.'],
+  ['#FFC24B','<path d="M12 3l2.6 6 6.4.5-4.9 4.2 1.5 6.3L12 16.6 6.4 20l1.5-6.3L3 9.5 9.4 9z"/>','Economía de la atención','Williams · H. Simon · S9–10','Lacie revisa su puntaje tras cada gesto: la atención secuestrada.'],
+  ['#3DA9FF','<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/>','Privacidad es poder','Véliz · S3–4','Poder duro: el puntaje decide casa y vuelo. Poder blando: Lacie ensaya su sonrisa.'],
+  ['#8B5CF6','<path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/>','Capitalismo de la vigilancia','Zuboff · S9–10','El asesor convierte su conducta en predicciones para cambiarla.'],
+  ['#22C55E','<path d="M3 21h18M5 21V10l7-6 7 6v11"/><path d="M10 21v-6h4v6"/>','Tecnofeudalismo','Varoufakis · S6','Naomi 4.8 es nobleza; Susan 1.4, sierva. El puntaje es el feudo.'],
+  ['#F6B3C6','<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>','Inforgs · Onlife','Floridi · S3','No hay frontera digital: el número flota sobre tu cara. Tu dato es tu identidad.']
+];
+document.getElementById('apps').innerHTML=CONCEPTS.map(([c,p,t,a,d],i)=>
+  `<div class="appc" data-a="pop" style="--d:${i+2}"><div class="iconwrap"><div class="icon" style="background:linear-gradient(150deg,${c},${c}88)"><svg viewBox="0 0 24 24">${p}</svg></div><span class="badge-n">${i+1}</span></div>
+   <div><div class="t" data-edit="c-t${i}">${esc(t)}</div><div class="au">${esc(a)}</div><div class="d" data-edit="c-d${i}">${esc(d)}</div></div></div>`).join('');
+
+/* ---- dilemas ---- */
+const LENS=['Utilitarista · <b>Bentham, Mill</b>','Deontológica · <b>Kant</b>','Virtud · <b>Aristóteles</b>','Sentimentalista · <b>Hume, Smith</b>'];
+const DIL=[
+  {img:'img/nosedive-camino.webp',pos:'86% 50%',bd:'4.3 vs 4.4',q:'¿Un puntaje puede decidir quién recibe un tratamiento?',va:'Eficiencia',vb:'Dignidad',
+   l:['Si el puntaje predijera quién aprovecha mejor el tratamiento, se podría defender. Pero mide popularidad, no salud.',
+      'La persona es un fin, no un medio: su derecho a vivir no depende de cuánto agrada.',
+      '¿Qué clase de sociedad premia al más simpático y no al más necesitado?',
+      'La historia de Susan nos indigna. Esa empatía también es un argumento moral.'],
+   cls:'En clase: Moral Machine, el algoritmo de órganos y la cama de UCI (Sesión 10)'},
+  {img:'img/nosedive-aeropuerto.webp',pos:'96% 50%',bd:'−1 · doble daño',q:'¿Se puede castigar sin juicio para mantener el orden?',va:'Orden y seguridad',vb:'Debido proceso',
+   l:['Sancionar rápido calma a la mayoría… a costa de que una persona pierda su viaje y su voz.',
+      'Una sanción sin defensa ni proporción trata a Lacie como un problema, no como una persona.',
+      'El funcionario obedece al sistema. La prudencia exigiría escuchar antes de castigar.',
+      'Todos hemos perdido la paciencia en una fila. ¿Eso merece un castigo que te sigue a todas partes?'],
+   cls:'En clase: el robot del aeropuerto que impide abordar sin pruebas (S10) · Deibert: verdad n.º 3'},
+  {img:'img/nosedive-calle-celulares.jpg',pos:'60% 50%',bd:'1.4',q:'¿Es libre una elección si no participar te excluye?',va:'Libertad',vb:'Inclusión',
+   l:['El sistema funciona si todos participan. Quien se sale paga solo el costo.',
+      'Un consentimiento bajo amenaza de exclusión no es consentimiento: es “acepta o vete”.',
+      'Susan elige la honestidad aunque la hunda. ¿Virtud, o el privilegio de quien ya lo perdió todo?',
+      'El alivio de Lacie en la cárcel muestra cuánto pesaba fingir.'],
+   cls:'En clase: Deibert, “lo permitimos voluntariamente” · Cobo: quienes usan la tecnología y quienes son usados por ella'},
+  {img:'img/nosedive-boda.jpg',bd:'4.8 + 4.2',q:'¿Una amistad puede ser una inversión?',va:'Autenticidad',vb:'Estatus',
+   l:['Gana-gana: Naomi se ve “auténtica” y Lacie sube. Si los dos ganan, ¿dónde está el daño?',
+      'Usar al otro solo como medio para subir: la amistad deja de ser un fin.',
+      'Amistad por utilidad o amistad verdadera: la primera se acaba cuando deja de servir, como la de Naomi.',
+      'El discurso de Lacie duele porque es lo primero sincero que dice en todo el episodio.'],
+   cls:'En clase: Bauman, vínculos frágiles · Véliz, cultura narcisista y exhibicionista (Sesión 3)'}
+];
+const dilTpl=document.getElementById('dilTpl'), respS=document.querySelector('.resp');
+DIL.forEach((d,i)=>{
+  const n=i+1, el=dilTpl.content.firstElementChild.cloneNode(true);
+  el.querySelector('.lbl').innerHTML=`<b>04</b>Dilema ético 0${n}`;
+  const sl=el.querySelector('.slot');sl.dataset.img=`dil${n}`;sl.dataset.default=d.img;if(d.pos)sl.dataset.pos=d.pos;
+  const put=(sel,key,txt)=>{const x=el.querySelector(sel);x.dataset.edit=key;x.textContent=txt;};
+  put('.bd',`dil${n}-bd`,d.bd);put('.q',`dil${n}-q`,d.q);put('.va',`dil${n}-va`,d.va);put('.vb',`dil${n}-vb`,d.vb);put('.cls',`dil${n}-cls`,d.cls);
+  el.querySelector('.lenses').innerHTML=d.l.map((t,j)=>`<div class="lens glass" data-a style="--d:${j+3}"><div class="k">${LENS[j]}</div><div class="v" data-edit="dil${n}-l${j}">${esc(t)}</div></div>`).join('');
+  respS.before(el);
+});
+</script>
+<script>
+/* ---- onda de voz ---- */
+document.getElementById('wave').innerHTML=Array.from({length:46},(_,i)=>`<i style="animation-delay:${(i%9)*-.12-(i%4)*.07}s"></i>`).join('');
+
+
+/* ---- guardado (texto + imágenes) ---- */
+const KEY='bm-nosedive-v4';
+let store={}; try{store=JSON.parse(localStorage.getItem(KEY))||{}}catch(e){}
+function persist(){try{localStorage.setItem(KEY,JSON.stringify(store))}catch(e){alertOnce()}}
+let warned=false;function alertOnce(){if(!warned){warned=true;console.warn('No se pudo guardar (almacenamiento lleno o bloqueado).')}}
+document.querySelectorAll('[data-edit]').forEach(el=>{
+  const k=el.dataset.edit; if(store['t:'+k]) el.textContent=store['t:'+k];
+  el.addEventListener('input',()=>{const v=el.textContent.trim(); if(!v) el.textContent=''; store['t:'+k]=v; persist();});
+  el.addEventListener('paste',e=>{e.preventDefault();document.execCommand('insertText',false,(e.clipboardData||window.clipboardData).getData('text'));});
+});
+function setSlot(sl,src){const img=sl.querySelector('img');img.style.objectPosition=sl.dataset.pos||'';if(src){img.src=src;sl.classList.add('has')}else{img.removeAttribute('src');sl.classList.remove('has')}}
+document.querySelectorAll('.slot').forEach(sl=>{
+  sl.insertAdjacentHTML('afterbegin','<img alt="">'+IMG_PH);
+  setSlot(sl,store['i:'+sl.dataset.img]||sl.dataset.default);
+  sl.addEventListener('click',e=>{if(!document.body.classList.contains('editing'))return;e.stopPropagation();pickFor=sl;filePick.click();});
+  sl.addEventListener('dragover',e=>{e.preventDefault();sl.classList.add('drag')});
+  sl.addEventListener('dragleave',()=>sl.classList.remove('drag'));
+  sl.addEventListener('drop',e=>{e.preventDefault();sl.classList.remove('drag');const f=e.dataTransfer.files[0];if(f)loadImg(f,sl);});
+});
+let pickFor=null; const filePick=document.getElementById('filePick');
+filePick.addEventListener('change',()=>{if(filePick.files[0]&&pickFor)loadImg(filePick.files[0],pickFor);filePick.value='';});
+function loadImg(file,sl){
+  if(!file.type.startsWith('image/'))return;
+  const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{
+    const m=1600,sc=Math.min(1,m/Math.max(im.width,im.height)),c=document.createElement('canvas');
+    c.width=im.width*sc;c.height=im.height*sc;c.getContext('2d').drawImage(im,0,0,c.width,c.height);
+    const url=c.toDataURL('image/jpeg',.85);setSlot(sl,url);store['i:'+sl.dataset.img]=url;persist();};im.src=r.result;};r.readAsDataURL(file);
+}
+const rb=document.getElementById('resetBtn');let armed=false;rb.onclick=()=>{if(!armed){armed=true;rb.textContent='¿Seguro? Clic otra vez';setTimeout(()=>{armed=false;rb.textContent='Borrar todo'},3000);return;}store={};persist();location.reload();};
+
+/* ---- votos (rompehielo + calificación final) ---- */
+const avgOf=c=>{const n=c.reduce((a,b)=>a+b,0);return n?c.reduce((a,b,i)=>a+b*(i+1),0)/n:0};
+const total=c=>c.reduce((a,b)=>a+b,0);
+const rateColor=v=>v===0?'var(--text)':v<2.5?'var(--red)':v<3.8?'var(--star)':'#3BE07A';
+function countTo(el,from,to){let t0=null;const f=t=>{t0??=t;const p=Math.min(1,(t-t0)/600),e=1-Math.pow(1-p,3);el.textContent=(from+(to-from)*e).toFixed(1);if(p<1)requestAnimationFrame(f)};requestAnimationFrame(f);}
+function floatStar(btn,host,n){const r=btn.getBoundingClientRect(),h=host.getBoundingClientRect(),s=h.width/host.offsetWidth;
+  const p=document.createElement('div');p.className='pop';p.textContent='+'+n+'★';p.style.left=((r.left-h.left)/s)+'px';p.style.top=((r.top-h.top)/s-20)+'px';host.appendChild(p);setTimeout(()=>p.remove(),1000);}
+const SC=4; let iceIdx=0;
+let iceVotes=Array.isArray(store['v:ice'])?store['v:ice']:Array.from({length:SC},()=>[0,0,0,0,0]);
+let iceHist=[];
+let finalVotes=Array.isArray(store['v:final'])?store['v:final']:[0,0,0,0,0];
+const iceTxt=document.getElementById('iceTxt'), iceAvg=document.getElementById('iceAvg');
+const sceneSpan=i=>document.querySelector(`[data-edit="ice-s${i}"]`);
+function makeStars(host,onVote){host.innerHTML=[1,2,3,4,5].map(n=>`<button aria-label="${n} estrellas">${STAR}<span class="n">${n}</span></button>`).join('');
+  [...host.children].forEach((b,i)=>{b.addEventListener('mouseenter',()=>lit(host,i+1));b.addEventListener('click',e=>{e.stopPropagation();onVote(i+1,b)})});
+  host.addEventListener('mouseleave',()=>lit(host,0));}
+function lit(host,n){[...host.querySelectorAll('svg')].forEach((s,i)=>s.classList.toggle('on',i<n))}
+function renderIce(swap){
+  const c=iceVotes[iceIdx],a=avgOf(c),n=total(c);
+  document.getElementById('iceCnt').textContent=`SITUACIÓN ${iceIdx+1} / ${SC}`;
+  if(!body().classList.contains('editing')||swap) iceTxt.textContent=sceneSpan(iceIdx).textContent;
+  if(swap){iceTxt.classList.remove('swap');void iceTxt.offsetWidth;iceTxt.classList.add('swap');}
+  iceAvg.textContent=n?a.toFixed(1):'–';iceAvg.style.color=rateColor(a);
+  document.getElementById('iceVotes').textContent=n+(n===1?' VOTO':' VOTOS');
+  const mx=Math.max(1,...c);
+  document.getElementById('iceDist').innerHTML=[5,4,3,2,1].map(s=>`<div class="r"><span>${s}★</span><span class="bar"><i style="width:${c[s-1]/mx*100}%"></i></span><span>${c[s-1]}</span></div>`).join('');
+  renderRecap();
+}
+function body(){return document.body}
+function iceVote(s,btn){
+  const c=iceVotes[iceIdx],before=avgOf(c);c[s-1]++;iceHist.push([iceIdx,s]);store['v:ice']=iceVotes;persist();
+  renderIce();countTo(iceAvg,before||s,avgOf(c));iceAvg.classList.remove('bump');void iceAvg.offsetWidth;iceAvg.classList.add('bump');
+  const host=document.querySelector('.ice .meter');floatStar(btn||document.querySelectorAll('#iceStars button')[s-1],host,s);
+}
+function iceUndo(){const h=iceHist.pop();if(!h)return;iceVotes[h[0]][h[1]-1]=Math.max(0,iceVotes[h[0]][h[1]-1]-1);iceIdx=h[0];store['v:ice']=iceVotes;persist();renderIce(true);}
+function iceGo(d){iceIdx=(iceIdx+d+SC)%SC;renderIce(true);}
+makeStars(document.getElementById('iceStars'),iceVote);
+document.getElementById('icePrev').onclick=e=>{e.stopPropagation();iceGo(-1)};
+document.getElementById('iceNext').onclick=e=>{e.stopPropagation();iceGo(1)};
+document.getElementById('iceUndo').onclick=e=>{e.stopPropagation();iceUndo()};
+iceTxt.addEventListener('input',()=>{const sp=sceneSpan(iceIdx),v=iceTxt.textContent.trim();sp.textContent=v;store['t:ice-s'+iceIdx]=v;persist();renderRecap();});
+function renderRecap(){
+  const rows=iceVotes.map((c,i)=>[sceneSpan(i).textContent,avgOf(c),total(c)]).filter(r=>r[2]>0);
+  const el=document.getElementById('recap');el.hidden=!rows.length;
+  el.innerHTML='<span class="k">Así calificó el salón</span>'+rows.map(r=>`<div class="r"><span></span><b>★ ${r[1].toFixed(1)}</b></div>`).join('');
+  [...el.querySelectorAll('.r span')].forEach((s,i)=>s.textContent=rows[i][0]);
+}
+/* calificación final: cada clic o tecla 1–5 es una persona */
+const score=document.getElementById('score'), rs=document.getElementById('rateStars');
+function renderFinal(){const n=total(finalVotes),a=avgOf(finalVotes);score.textContent=n?a.toFixed(1):'0.0';score.style.color=rateColor(a);
+  document.getElementById('rateVotes').textContent=n?`${n} ${n===1?'CALIFICACIÓN':'CALIFICACIONES'}`:'TOCA UNA ESTRELLA · TECLAS 1–5';lit(rs,Math.round(a));}
+function finalVote(s,btn){const before=avgOf(finalVotes);finalVotes[s-1]++;store['v:final']=finalVotes;persist();renderFinal();countTo(score,before||s,avgOf(finalVotes));
+  floatStar(btn||rs.children[s-1],document.querySelector('.s14 .rate'),s);}
+makeStars(rs,finalVote);rs.addEventListener('mouseleave',()=>renderFinal());
+renderIce(true);renderFinal();
+document.getElementById('votesBtn').onclick=()=>{iceVotes=Array.from({length:SC},()=>[0,0,0,0,0]);finalVotes=[0,0,0,0,0];iceHist=[];store['v:ice']=iceVotes;store['v:final']=finalVotes;persist();renderIce(true);renderFinal();};
+
+/* ---- audio de la nota de voz ---- */
+const aud=document.getElementById('aud'), s12=document.querySelector('.s12'), player=document.getElementById('player'), audHint=document.getElementById('audHint'), audTime=document.getElementById('audTime');
+const fmt=t=>isFinite(t)?Math.floor(t/60)+':'+String(Math.floor(t%60)).padStart(2,'0'):'0:00';
+function audReady(ok){player.classList.toggle('noaudio',!ok);audHint.textContent=ok?'':'Sin audio · arrastra un archivo de audio a esta diapositiva';}
+aud.addEventListener('loadedmetadata',()=>{audReady(true);audTime.textContent=fmt(aud.duration)});
+aud.addEventListener('error',()=>{if(store['a:cita']&&aud.src!==store['a:cita']){aud.src=store['a:cita'];}else audReady(false)});
+aud.addEventListener('timeupdate',()=>{audTime.textContent=fmt(aud.duration-aud.currentTime)});
+aud.addEventListener('play',()=>s12.classList.add('playing'));
+['pause','ended'].forEach(ev=>aud.addEventListener(ev,()=>{s12.classList.remove('playing');if(ev==='ended'){aud.currentTime=0;audTime.textContent=fmt(aud.duration)}}));
+if(store['a:cita']) aud.src=store['a:cita'];
+function toggleAud(){if(player.classList.contains('noaudio'))return;aud.paused?aud.play().catch(()=>{}):aud.pause();}
+document.getElementById('playBtn').onclick=e=>{e.stopPropagation();toggleAud()};
+s12.addEventListener('dragover',e=>{e.preventDefault();s12.classList.add('drag')});
+s12.addEventListener('dragleave',()=>s12.classList.remove('drag'));
+s12.addEventListener('drop',e=>{e.preventDefault();s12.classList.remove('drag');const f=e.dataTransfer.files[0];if(!f||!f.type.startsWith('audio/'))return;
+  const r=new FileReader();r.onload=()=>{aud.src=r.result;store['a:cita']=r.result;persist();};r.readAsDataURL(f);});
+
+/* ---- comprobación (preguntas) ---- */
+const QT=['Comprensión','Análisis · Sesión 10','Pensamiento crítico'];
+const quizS=document.querySelector('.quiz'), qTxt=document.getElementById('qTxt'), qHint=document.getElementById('qHint'), qList=document.getElementById('qList');
+let qIdx=0;
+const qSpan=(i,h)=>document.querySelector(`[data-edit="q${i}${h?'h':''}"]`);
+qList.innerHTML=QT.map((t,i)=>`<button class="qs" data-i="${i}"><span class="n">${i+1}</span><span>${t}</span></button>`).join('');
+qList.querySelectorAll('.qs').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();qIdx=+b.dataset.i;renderQ(true)}));
+function renderQ(swap){
+  document.getElementById('qTag').textContent=`PREGUNTA ${qIdx+1} / ${QT.length} · ${QT[qIdx]}`;
+  qTxt.textContent=qSpan(qIdx).textContent; qHint.textContent=qSpan(qIdx,1).textContent;
+  quizS.classList.remove('reveal');
+  qList.querySelectorAll('.qs').forEach((b,i)=>b.classList.toggle('on',i===qIdx));
+  if(swap){qTxt.classList.remove('swap');void qTxt.offsetWidth;qTxt.classList.add('swap');}
+}
+function qGo(d){qIdx=(qIdx+d+QT.length)%QT.length;renderQ(true);}
+function qReveal(){quizS.classList.toggle('reveal');}
+document.querySelector('.qcard').addEventListener('click',e=>{if(document.body.classList.contains('editing'))return;e.stopPropagation();qReveal();});
+renderQ(false);
+
+/* ---- modo edición ---- */
+function setEdit(on){document.body.classList.toggle('editing',on);document.querySelectorAll('[data-edit]').forEach(el=>el.contentEditable=on);iceTxt.contentEditable=on;
+  document.getElementById('editBtn').textContent=on?'Listo':'Editar'; if(!on) document.activeElement.blur?.();}
+document.getElementById('editBtn').onclick=e=>{e.stopPropagation();setEdit(!document.body.classList.contains('editing'))};
+document.getElementById('doneBtn').onclick=()=>setEdit(false);
+
+/* ---- navegación ---- */
+const slides=[...document.querySelectorAll('.slide')], stage=document.getElementById('stage');
+let cur=0,busy=false;
+function show(i){slides.forEach((s,j)=>s.classList.toggle('active',j===i));cur=i;
+  document.getElementById('sbCount').textContent=String(i+1).padStart(2,'0')+' / '+slides.length;
+  document.getElementById('prog').style.width=((i+1)/slides.length*100)+'%';
+  try{history.replaceState(null,'','#'+(i+1))}catch(e){}}
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+async function go(n){
+  if(busy||n<0||n>=slides.length||n===cur)return; busy=true;
+  if(reduce){show(n);busy=false;return;}
+  if(cur===0&&n===1){ // desbloqueo: pantalla que se rompe
+    stage.classList.add('t-crack');await wait(560);stage.classList.add('t-flash');show(n);await wait(380);stage.classList.remove('t-crack','t-flash');
+  }else{
+    const type=(Math.min(cur,n)%2)?'crt':'glitch';
+    stage.classList.add('t-'+type+'-out');await wait(type==='crt'?420:380);
+    stage.classList.remove('t-'+type+'-out');show(n);stage.classList.add('t-'+type+'-in');await wait(500);stage.classList.remove('t-'+type+'-in');
+  }
+  busy=false;
+}
+document.addEventListener('keydown',e=>{
+  if(document.body.classList.contains('editing')){ if(e.key==='Escape') setEdit(false); return; }
+  const sl=slides[cur];
+  if(/^[1-5]$/.test(e.key)&&(sl.classList.contains('ice')||sl.classList.contains('s14'))){(sl.classList.contains('ice')?iceVote:finalVote)(+e.key);pokeHud();return;}
+  if(sl.classList.contains('ice')){if(e.key==='ArrowDown'){e.preventDefault();iceGo(1);return}if(e.key==='ArrowUp'){e.preventDefault();iceGo(-1);return}if(e.key.toLowerCase()==='z'){iceUndo();return}}
+  if(sl.classList.contains('s12')&&e.key.toLowerCase()==='p'){toggleAud();return}
+  if(sl.classList.contains('quiz')){if(e.key==='ArrowDown'){e.preventDefault();qGo(1);return}if(e.key==='ArrowUp'){e.preventDefault();qGo(-1);return}if(e.key.toLowerCase()==='r'){qReveal();return}}
+  if(['ArrowRight','PageDown',' ','Enter'].includes(e.key)){e.preventDefault();go(cur+1)}
+  else if(['ArrowLeft','PageUp','Backspace'].includes(e.key)){e.preventDefault();go(cur-1)}
+  else if(e.key==='Home')go(0); else if(e.key==='End')go(slides.length-1);
+  else if(e.key.toLowerCase()==='f'){document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen?.()?.catch?.(()=>{})}
+  else if(e.key.toLowerCase()==='e'){setEdit(true)}
+  pokeHud();
+});
+document.getElementById('navR').onclick=()=>go(cur+1);
+document.getElementById('navL').onclick=()=>go(cur-1);
+let tx=null;addEventListener('touchstart',e=>tx=e.touches[0].clientX,{passive:true});
+addEventListener('touchend',e=>{if(tx==null||document.body.classList.contains('editing'))return;const dx=e.changedTouches[0].clientX-tx;if(Math.abs(dx)>50)go(cur+(dx<0?1:-1));tx=null;});
+
+/* ---- HUD que se oculta ---- */
+const hud=document.getElementById('hud');let ht;
+function pokeHud(){hud.classList.remove('hide');clearTimeout(ht);ht=setTimeout(()=>{if(!document.body.classList.contains('editing'))hud.classList.add('hide')},3500);}
+addEventListener('mousemove',pokeHud);pokeHud();
+
+/* ---- escala ---- */
+function fit(){const s=Math.min(innerWidth/1920,innerHeight/1080);stage.style.transform=`translate(-50%,-50%) scale(${s})`;}
+addEventListener('resize',fit);fit();
+
+/* ---- reloj ---- */
+function tick(){const d=new Date(),hm=d.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit',hour12:false});
+  document.getElementById('sbClock').textContent=hm;document.getElementById('bigClock').textContent=hm;
+  document.getElementById('bigDate').textContent=d.toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long'});}
+tick();setInterval(tick,10000);
+
+const start=Math.max(0,Math.min(slides.length-1,(parseInt(location.hash.slice(1))||1)-1));
+show(start);
+</script>
+</body>
+</html>
